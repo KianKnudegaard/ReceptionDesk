@@ -1,0 +1,55 @@
+===============================================================
+  Project 4 — Front Desk Lobby Scene
+  Software Requirements & Run Instructions
+===============================================================
+
+AUTHOR  : Kian Knudegaard
+COURSE  : [Course Name / Number]
+DATE    : [Submission Date]
+
+---------------------------------------------------------------
+SOFTWARE REQUIREMENTS
+---------------------------------------------------------------
+  - Windows 10/11 (tested), Linux or macOS also supported
+  - CMake 3.20+          https://cmake.org/download/
+  - vcpkg                https://github.com/microsoft/vcpkg
+  - C++17 compiler       (MSVC 2022, GCC 11, or Clang 14)
+  - OpenGL 3.3+          (any GPU made after ~2010)
+
+vcpkg packages required:
+  glfw3, glad, glm
+  Install with: .\vcpkg install glfw3 glad glm
+
+---------------------------------------------------------------
+BUILD INSTRUCTIONS
+---------------------------------------------------------------
+  1. Clone or download the repository
+  2. Ensure vcpkg is installed and glfw3/glad/glm are installed
+  3. Open the folder in Visual Studio 2022
+     (it will detect CMakePresets.json automatically)
+  4. Select the "windows-default" preset
+  5. Build -> Build All
+
+  Or from command line:
+    cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="C:/Users/<you>/vcpkg/scripts/buildsystems/vcpkg.cmake"
+    cmake --build build --config Debug
+
+---------------------------------------------------------------
+RUNNING
+---------------------------------------------------------------
+  Run Scene.exe from the build output directory.
+
+  Controls:
+    W / S         — move camera forward / backward
+    A / D         — strafe camera left / right
+    LEFT / RIGHT  — rotate camera left / right (yaw)
+    UP / DOWN     — tilt camera up / down (pitch)
+    ESC           — quit
+
+---------------------------------------------------------------
+OTHER EXECUTABLES IN THIS PROJECT
+---------------------------------------------------------------
+  ReceptionDesk.exe  — isolated reception counter (Lab Q1)
+  Pyramids.exe       — three pyramids, three camera views (Lab Q2)
+  Mesh.exe           — sine wave surface mesh (Lab Q3)
+  Scene.exe          — full front desk lobby scene (Project 4)

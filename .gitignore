@@ -1,0 +1,9 @@
+﻿.vs/
+out/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
