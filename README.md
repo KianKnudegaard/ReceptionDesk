@@ -83,11 +83,15 @@ Or open the folder in **Visual Studio 2022** — it detects `CMakePresets.json` 
 
 ---
 
-## Screenshot
+## Screenshots
 
 ![Scene Screenshot](screenshots/scene.png)
+![Scene Screenshot](screenshots/Shaders.png)
 
 ---
+
+##Project 5 Additions
+At a very basic level, project 5 introduced shaders and much better lighting to the scene from project 4. For further specific detail, check the requirements and the project 5 submission document
 
 ## AI Assistance Disclosure
 
