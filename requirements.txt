@@ -1,6 +1,6 @@
 ===============================================================
-  Project 4 — Front Desk Lobby Scene
-  Software Requirements & Run Instructions
+  ReceptionDesk — Software Requirements & Run Instructions
+  Project 5: Front Desk Lobby Scene with Phong Lighting
 ===============================================================
 
 AUTHOR  : Kian Knudegaard
@@ -23,33 +23,67 @@ vcpkg packages required:
 ---------------------------------------------------------------
 BUILD INSTRUCTIONS
 ---------------------------------------------------------------
-  1. Clone or download the repository
-  2. Ensure vcpkg is installed and glfw3/glad/glm are installed
-  3. Open the folder in Visual Studio 2022
-     (it will detect CMakePresets.json automatically)
-  4. Select the "windows-default" preset
-  5. Build -> Build All
+  Option A — Visual Studio 2022 (recommended):
+    1. Open the ReceptionDesk folder in Visual Studio 2022
+    2. It will detect CMakePresets.json automatically
+    3. Select the "windows-default" preset if prompted
+    4. Build -> Build All (Ctrl+Shift+B)
 
-  Or from command line:
-    cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="C:/Users/<you>/vcpkg/scripts/buildsystems/vcpkg.cmake"
+  Option B — Command line:
+    cmake -B build -S . ^
+      -DCMAKE_TOOLCHAIN_FILE="C:/Users/<you>/vcpkg/scripts/buildsystems/vcpkg.cmake"
     cmake --build build --config Debug
 
 ---------------------------------------------------------------
-RUNNING
+RUNNING THE PROGRAMS
 ---------------------------------------------------------------
-  Run Scene.exe from the build output directory.
+  Scene.exe          — Project 5: Full lobby scene with Phong lighting
+  ReceptionDesk.exe  — Lab: Reception counter with Phong lighting
+  Pyramids.exe       — Lab: Three pyramids, three camera views
+  Mesh.exe           — Lab: Sine wave surface mesh f(x,z)=sin(x)*cos(z)
 
-  Controls:
-    W / S         — move camera forward / backward
-    A / D         — strafe camera left / right
-    LEFT / RIGHT  — rotate camera left / right (yaw)
-    UP / DOWN     — tilt camera up / down (pitch)
-    ESC           — quit
+  Controls (Scene.exe and ReceptionDesk.exe):
+    W / S           — move camera forward / backward
+    A / D           — strafe camera left / right
+    LEFT / RIGHT    — rotate camera yaw
+    UP / DOWN       — tilt camera pitch
+    ESC             — quit
+
+  Controls (Pyramids.exe):
+    1 / 2 / 3       — switch between three camera views
+    ESC             — quit
+
+  Controls (Mesh.exe):
+    LEFT / RIGHT    — rotate around Y axis
+    UP / DOWN       — rotate around X axis
+    ESC             — quit
 
 ---------------------------------------------------------------
-OTHER EXECUTABLES IN THIS PROJECT
+LIGHTING (Project 5 / Scene.exe)
 ---------------------------------------------------------------
-  ReceptionDesk.exe  — isolated reception counter (Lab Q1)
-  Pyramids.exe       — three pyramids, three camera views (Lab Q2)
-  Mesh.exe           — sine wave surface mesh (Lab Q3)
-  Scene.exe          — full front desk lobby scene (Project 4)
+  Two point lights are used:
+    Light 1: warm white (1.0, 0.97, 0.90) at position (0, 3.5, 0)
+             simulates overhead recessed ceiling fixtures
+    Light 2: cool blue fill (0.55, 0.60, 0.70) at position (-3, 2, 5)
+             simulates ambient reflected light from exterior
+
+  Per-object Phong material properties (specular strength + shininess)
+  are tuned per surface type:
+    Matte paint  — low spec (0.05-0.15), low shine (8-24)
+    Laminate top — moderate spec (0.35), moderate shine (48)
+    Glass/screen — high spec (0.70-0.80), high shine (128)
+    Metal        — high spec (0.50-0.60), high shine (64-96)
+
+---------------------------------------------------------------
+TROUBLESHOOTING
+---------------------------------------------------------------
+  Black window / no output:
+    Check that your GPU supports OpenGL 3.3.
+
+  CMake cannot find glfw3/glad/glm:
+    Run: .\vcpkg install glfw3 glad glm
+    Ensure CMakePresets.json points to your vcpkg location.
+
+  Scene looks flat / no lighting:
+    Make sure you are running Scene.exe (Project 5), not the
+    older build. Delete the out/ folder and rebuild if unsure.

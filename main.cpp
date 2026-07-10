@@ -1,15 +1,21 @@
 ﻿// =============================================================================
-// ReceptionDesk · main.cpp
+// ReceptionDesk · main.cpp  (Project 4 + Phong lighting extension)
 //
-// Lab Question: Transformations applied to the reception desk front counter.
+// Discussion prompt: How would you apply a lighting model to your scene?
 //
 // Scene object: Apartment building front desk reception counter
 // Components:
 //   1. Front Panel  — tall yellow facing (wide, tall, thin box)
-//   2. Counter Top  — flat grey work surface (wide, flat, deep box)
-//   3. Base Plinth  — dark strip at floor level (wide, short, thin box)
+//   2. Base Plinth  — dark strip at floor level
+//   3. Side Panels  — dark blocks flanking the yellow facing
 //
-// Each component is a unit cube transformed by:
+// LIGHTING MODEL: Phong (ambient + diffuse + specular), per-fragment.
+//   - Ambient:  constant 0.15 * objectColor, so no face goes pure black
+//   - Diffuse:  Lambertian N.L term, clamped to 0 (see Topic 5 activity)
+//   - Specular: Blinn-Phong halfway vector, low strength/shininess for
+//               matte laminate/painted surfaces (no glossy highlight)
+//
+// Each component is a unit cube (now with per-face normals) transformed by:
 //   Scale       → stretch into correct proportions
 //   Translate   → position in world space
 //   Rotate      → Y-axis rotation for interactive viewing
@@ -17,11 +23,6 @@
 // Controls:
 //   LEFT / RIGHT arrow  — rotate the counter
 //   ESC                 — quit
-//
-// PROJECT 4 EXPANSION NOTES:
-//   To add more objects to the scene, follow the pattern in drawScene():
-//   create a model matrix with the desired transforms and call drawBox().
-//   The camera, shaders, and VAO are all reusable as-is.
 // =============================================================================
 
 #include <glad/glad.h>
@@ -36,58 +37,125 @@
 // -----------------------------------------------------------------------------
 const int   WIN_W = 900;
 const int   WIN_H = 700;
-const char* WIN_TITLE = "Reception Desk — Lab: Transformations";
+const char* WIN_TITLE = "Reception Desk - Lab: Transformations + Lighting";
 
 // -----------------------------------------------------------------------------
-// GLSL shaders (inline — no external files needed)
+// GLSL shaders (inline - no external files needed)
 //
-// Vertex shader:   transforms each vertex by the MVP matrix
-// Fragment shader: outputs a solid colour passed as a uniform
+// Vertex shader:   transforms position AND normal by model/view/proj,
+//                  passes world-space position + normal to the fragment stage
+// Fragment shader: computes Phong lighting (ambient + diffuse + specular)
 // -----------------------------------------------------------------------------
 const char* VERT_SRC = R"(
 #version 330 core
 layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
 
-uniform mat4 uMVP;
+uniform mat4 uModel;
+uniform mat4 uView;
+uniform mat4 uProj;
+uniform mat3 uNormalMatrix; // transpose(inverse(mat3(model))), handles non-uniform scale
+
+out vec3 vFragPos;
+out vec3 vNormal;
 
 void main() {
-    gl_Position = uMVP * vec4(aPos, 1.0);
+    vec4 worldPos = uModel * vec4(aPos, 1.0);
+    vFragPos = worldPos.xyz;
+    vNormal = normalize(uNormalMatrix * aNormal);
+    gl_Position = uProj * uView * worldPos;
 }
 )";
 
 const char* FRAG_SRC = R"(
 #version 330 core
-uniform vec3 uColor;
+in vec3 vFragPos;
+in vec3 vNormal;
+
+uniform vec3 uColor;         // object's base/solid color
+uniform vec3 uLightPos;      // world-space light position
+uniform vec3 uLightColor;    // light's color/intensity
+uniform vec3 uViewPos;       // camera position (for specular)
+uniform float uSpecularStrength;
+uniform float uShininess;
+
 out vec4 FragColor;
 
 void main() {
-    FragColor = vec4(uColor, 1.0);
+    // Ambient: keeps unlit faces from going pure black
+    float ambientStrength = 0.15;
+    vec3 ambient = ambientStrength * uLightColor;
+
+    // Diffuse: Lambertian N.L, clamped to 0 (the "trap" case from Topic 5)
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(uLightPos - vFragPos);
+    float diff = max(dot(N, L), 0.0);
+    vec3 diffuse = diff * uLightColor;
+
+    // Specular: Blinn-Phong halfway vector, kept subtle for matte surfaces
+    vec3 V = normalize(uViewPos - vFragPos);
+    vec3 H = normalize(L + V);
+    float spec = pow(max(dot(N, H), 0.0), uShininess);
+    vec3 specular = uSpecularStrength * spec * uLightColor;
+
+    vec3 result = (ambient + diffuse + specular) * uColor;
+    FragColor = vec4(result, 1.0);
 }
 )";
 
 // -----------------------------------------------------------------------------
-// Unit cube vertices (1x1x1 centred at origin, 36 vertices / 12 triangles)
-// All objects in the scene are built by transforming this same cube.
+// Unit cube vertices (1x1x1 centred at origin), now WITH per-face normals.
+// Layout per vertex: position(3) + normal(3) = 6 floats.
+// 36 vertices / 12 triangles, same winding as the original.
 // -----------------------------------------------------------------------------
 float g_cubeVerts[] = {
-    // Back face
-    -0.5f,-0.5f,-0.5f,  0.5f,-0.5f,-0.5f,  0.5f, 0.5f,-0.5f,
-     0.5f, 0.5f,-0.5f, -0.5f, 0.5f,-0.5f, -0.5f,-0.5f,-0.5f,
-     // Front face
-     -0.5f,-0.5f, 0.5f,  0.5f,-0.5f, 0.5f,  0.5f, 0.5f, 0.5f,
-      0.5f, 0.5f, 0.5f, -0.5f, 0.5f, 0.5f, -0.5f,-0.5f, 0.5f,
-      // Left face
-      -0.5f, 0.5f, 0.5f, -0.5f, 0.5f,-0.5f, -0.5f,-0.5f,-0.5f,
-      -0.5f,-0.5f,-0.5f, -0.5f,-0.5f, 0.5f, -0.5f, 0.5f, 0.5f,
-      // Right face
-       0.5f, 0.5f, 0.5f,  0.5f, 0.5f,-0.5f,  0.5f,-0.5f,-0.5f,
-       0.5f,-0.5f,-0.5f,  0.5f,-0.5f, 0.5f,  0.5f, 0.5f, 0.5f,
-       // Bottom face
-       -0.5f,-0.5f,-0.5f,  0.5f,-0.5f,-0.5f,  0.5f,-0.5f, 0.5f,
-        0.5f,-0.5f, 0.5f, -0.5f,-0.5f, 0.5f, -0.5f,-0.5f,-0.5f,
-        // Top face
-        -0.5f, 0.5f,-0.5f,  0.5f, 0.5f,-0.5f,  0.5f, 0.5f, 0.5f,
-         0.5f, 0.5f, 0.5f, -0.5f, 0.5f, 0.5f, -0.5f, 0.5f,-0.5f
+    // Back face   (normal 0,0,-1)
+    -0.5f,-0.5f,-0.5f,  0.0f, 0.0f,-1.0f,
+     0.5f,-0.5f,-0.5f,  0.0f, 0.0f,-1.0f,
+     0.5f, 0.5f,-0.5f,  0.0f, 0.0f,-1.0f,
+     0.5f, 0.5f,-0.5f,  0.0f, 0.0f,-1.0f,
+    -0.5f, 0.5f,-0.5f,  0.0f, 0.0f,-1.0f,
+    -0.5f,-0.5f,-0.5f,  0.0f, 0.0f,-1.0f,
+
+    // Front face  (normal 0,0,1)
+    -0.5f,-0.5f, 0.5f,  0.0f, 0.0f, 1.0f,
+     0.5f,-0.5f, 0.5f,  0.0f, 0.0f, 1.0f,
+     0.5f, 0.5f, 0.5f,  0.0f, 0.0f, 1.0f,
+     0.5f, 0.5f, 0.5f,  0.0f, 0.0f, 1.0f,
+    -0.5f, 0.5f, 0.5f,  0.0f, 0.0f, 1.0f,
+    -0.5f,-0.5f, 0.5f,  0.0f, 0.0f, 1.0f,
+
+    // Left face   (normal -1,0,0)
+    -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f,-0.5f, -1.0f, 0.0f, 0.0f,
+    -0.5f,-0.5f,-0.5f, -1.0f, 0.0f, 0.0f,
+    -0.5f,-0.5f,-0.5f, -1.0f, 0.0f, 0.0f,
+    -0.5f,-0.5f, 0.5f, -1.0f, 0.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f,
+
+    // Right face  (normal 1,0,0)
+     0.5f, 0.5f, 0.5f,  1.0f, 0.0f, 0.0f,
+     0.5f, 0.5f,-0.5f,  1.0f, 0.0f, 0.0f,
+     0.5f,-0.5f,-0.5f,  1.0f, 0.0f, 0.0f,
+     0.5f,-0.5f,-0.5f,  1.0f, 0.0f, 0.0f,
+     0.5f,-0.5f, 0.5f,  1.0f, 0.0f, 0.0f,
+     0.5f, 0.5f, 0.5f,  1.0f, 0.0f, 0.0f,
+
+     // Bottom face (normal 0,-1,0)
+     -0.5f,-0.5f,-0.5f,  0.0f,-1.0f, 0.0f,
+      0.5f,-0.5f,-0.5f,  0.0f,-1.0f, 0.0f,
+      0.5f,-0.5f, 0.5f,  0.0f,-1.0f, 0.0f,
+      0.5f,-0.5f, 0.5f,  0.0f,-1.0f, 0.0f,
+     -0.5f,-0.5f, 0.5f,  0.0f,-1.0f, 0.0f,
+     -0.5f,-0.5f,-0.5f,  0.0f,-1.0f, 0.0f,
+
+     // Top face    (normal 0,1,0)
+     -0.5f, 0.5f,-0.5f,  0.0f, 1.0f, 0.0f,
+      0.5f, 0.5f,-0.5f,  0.0f, 1.0f, 0.0f,
+      0.5f, 0.5f, 0.5f,  0.0f, 1.0f, 0.0f,
+      0.5f, 0.5f, 0.5f,  0.0f, 1.0f, 0.0f,
+     -0.5f, 0.5f, 0.5f,  0.0f, 1.0f, 0.0f,
+     -0.5f, 0.5f,-0.5f,  0.0f, 1.0f, 0.0f,
 };
 
 // -----------------------------------------------------------------------------
@@ -96,6 +164,15 @@ float g_cubeVerts[] = {
 float g_angle = 0.3f;   // Y-axis rotation (arrow keys)
 GLuint g_VAO, g_VBO;
 GLuint g_prog;
+
+// Camera position kept as a global so the fragment shader can use it for
+// specular (view-dependent) lighting. Must match the eye passed to glm::lookAt.
+glm::vec3 g_cameraPos = glm::vec3(-2.0f, 1.2f, 4.5f);
+
+// A single point light placed above and in front of the desk, roughly where
+// an overhead lobby fixture would sit.
+glm::vec3 g_lightPos = glm::vec3(1.5f, 3.0f, 2.5f);
+glm::vec3 g_lightColor = glm::vec3(1.0f, 1.0f, 0.95f); // slightly warm white
 
 // -----------------------------------------------------------------------------
 // Shader helpers
@@ -127,35 +204,43 @@ GLuint createShaderProgram() {
 }
 
 // -----------------------------------------------------------------------------
-// drawBox: draws the unit cube with a given model matrix and solid colour.
+// drawBox: draws the unit cube with a given model matrix, solid color, and
+// material response (specular strength + shininess).
 //
 // Parameters:
-//   model  — the model matrix (scale + translate + rotate combined)
-//   view   — camera view matrix (shared across all objects)
-//   proj   — projection matrix (shared across all objects)
-//   color  — RGB colour for this object
-//
-// To add a new object in Project 4, call this function with a new model matrix.
+//   model             — the model matrix (scale + translate + rotate combined)
+//   view, proj        — camera matrices (shared across all objects)
+//   color             — RGB base color for this object
+//   specularStrength  — 0 = fully matte, higher = more visible highlight
+//   shininess         — higher = tighter/sharper highlight
 // -----------------------------------------------------------------------------
 void drawBox(const glm::mat4& model,
     const glm::mat4& view,
     const glm::mat4& proj,
-    glm::vec3 color)
+    glm::vec3 color,
+    float specularStrength = 0.2f,
+    float shininess = 32.0f)
 {
-    glm::mat4 mvp = proj * view * model;
-    glUniformMatrix4fv(glGetUniformLocation(g_prog, "uMVP"),
-        1, GL_FALSE, glm::value_ptr(mvp));
-    glUniform3fv(glGetUniformLocation(g_prog, "uColor"),
-        1, glm::value_ptr(color));
+    glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
+
+    glUniformMatrix4fv(glGetUniformLocation(g_prog, "uModel"), 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(glGetUniformLocation(g_prog, "uView"), 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(glGetUniformLocation(g_prog, "uProj"), 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix3fv(glGetUniformLocation(g_prog, "uNormalMatrix"), 1, GL_FALSE, glm::value_ptr(normalMatrix));
+
+    glUniform3fv(glGetUniformLocation(g_prog, "uColor"), 1, glm::value_ptr(color));
+    glUniform3fv(glGetUniformLocation(g_prog, "uLightPos"), 1, glm::value_ptr(g_lightPos));
+    glUniform3fv(glGetUniformLocation(g_prog, "uLightColor"), 1, glm::value_ptr(g_lightColor));
+    glUniform3fv(glGetUniformLocation(g_prog, "uViewPos"), 1, glm::value_ptr(g_cameraPos));
+    glUniform1f(glGetUniformLocation(g_prog, "uSpecularStrength"), specularStrength);
+    glUniform1f(glGetUniformLocation(g_prog, "uShininess"), shininess);
+
     glBindVertexArray(g_VAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
 }
 
 // -----------------------------------------------------------------------------
 // drawScene: builds and draws all objects in the scene.
-//
-// This is the function to expand in Project 4 — add more drawBox() calls
-// here for each new object (chairs, monitors, plants, walls, etc.)
 // -----------------------------------------------------------------------------
 void drawScene(const glm::mat4& view, const glm::mat4& proj) {
 
@@ -167,46 +252,43 @@ void drawScene(const glm::mat4& view, const glm::mat4& proj) {
         glm::vec3(0.0f, 1.0f, 0.0f)
     );
 
-    // COMPONENT 1: Front Panel (yellow facing)
-
+    // COMPONENT 1: Front Panel (yellow facing) - painted laminate, matte
     glm::mat4 panelModel = rot
         * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.55f, 0.0f))
         * glm::scale(glm::mat4(1.0f), glm::vec3(2.4f, 1.1f, 0.4f));
-
     drawBox(panelModel, view, proj,
-        glm::vec3(0.95f, 0.78f, 0.06f));   // yellow
+        glm::vec3(0.95f, 0.78f, 0.06f),   // yellow
+        0.15f, 24.0f);                     // low specular, matte paint
 
-    // Base panel - black block underneath yellow panel
+    // COMPONENT 2: Base panel - black block underneath yellow panel
     glm::mat4 baseModel = rot
         * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.1f, 0.0f))
         * glm::scale(glm::mat4(1.0f), glm::vec3(2.4f, 0.2f, 0.5f));
-
     drawBox(baseModel, view, proj,
-        glm::vec3(0.08f, 0.08f, 0.08f));   // black
+        glm::vec3(0.08f, 0.08f, 0.08f),   // black
+        0.25f, 32.0f);                     // slightly more sheen, painted MDF trim
 
-    // Side panel — black block on left of yellow panel
+    // COMPONENT 3: Side panel - black block on left of yellow panel
     glm::mat4 sidePanelModel = rot
         * glm::translate(glm::mat4(1.0f), glm::vec3(-1.3f, 0.3f, 0.0f))
         * glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 1.0f, 0.5f));
-
     drawBox(sidePanelModel, view, proj,
-        glm::vec3(0.08f, 0.08f, 0.08f));   // black
+        glm::vec3(0.08f, 0.08f, 0.08f),   // black
+        0.25f, 32.0f);
 
-    // Side panel — black block on right of yellow panel
+    // COMPONENT 4: Side panel - black block on right of yellow panel
     glm::mat4 sidePanelModel1 = rot
         * glm::translate(glm::mat4(1.0f), glm::vec3(1.3f, 0.3f, 0.0f))
         * glm::scale(glm::mat4(1.0f), glm::vec3(0.2f, 1.0f, 0.5f));
-
     drawBox(sidePanelModel1, view, proj,
-        glm::vec3(0.08f, 0.08f, 0.08f));   // black
+        glm::vec3(0.08f, 0.08f, 0.08f),   // black
+        0.25f, 32.0f);
 
     // =========================================================================
-    // PROJECT 4: Add more objects below this line following the same pattern:
-    //
-    // glm::mat4 myObjectModel = rot
-    //     * glm::translate(glm::mat4(1.0f), glm::vec3(x, y, z))
-    //     * glm::scale(glm::mat4(1.0f), glm::vec3(w, h, d));
-    // drawBox(myObjectModel, view, proj, glm::vec3(r, g, b));
+    // To add more objects: call drawBox() with a new model matrix and, if the
+    // material should look glossier or more matte, adjust the specular
+    // strength / shininess args (e.g., closet glass would want a high
+    // specular strength and high shininess for a tight, bright highlight).
     // =========================================================================
 }
 
@@ -226,7 +308,7 @@ void keyCallback(GLFWwindow* window, int key, int, int action, int) {
 // main
 // -----------------------------------------------------------------------------
 int main() {
-    // ── GLFW init ─────────────────────────────────────────────────────────────
+    // -- GLFW init --
     if (!glfwInit()) {
         std::cerr << "GLFW init failed\n";
         return -1;
@@ -246,7 +328,7 @@ int main() {
     glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
     glfwSetKeyCallback(window, keyCallback);
 
-    // ── GLAD init ─────────────────────────────────────────────────────────────
+    // -- GLAD init --
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "GLAD init failed\n";
         return -1;
@@ -255,23 +337,28 @@ int main() {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_MULTISAMPLE);
 
-    // ── Shaders ───────────────────────────────────────────────────────────────
+    // -- Shaders --
     g_prog = createShaderProgram();
 
-    // ── Upload unit cube to GPU ───────────────────────────────────────────────
+    // -- Upload unit cube (position + normal) to GPU --
     glGenVertexArrays(1, &g_VAO);
     glGenBuffers(1, &g_VBO);
     glBindVertexArray(g_VAO);
     glBindBuffer(GL_ARRAY_BUFFER, g_VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(g_cubeVerts), g_cubeVerts, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+    // position: location 0, 3 floats, stride 6 floats, offset 0
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+    // normal: location 1, 3 floats, stride 6 floats, offset 3 floats
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
     glBindVertexArray(0);
 
-    // ── Camera (view + projection) ────────────────────────────────────────────
-    // For Project 4: adjust eye position and lookAt target to frame your scene.
+    // -- Camera (view + projection) --
     glm::mat4 view = glm::lookAt(
-        glm::vec3(-2.0f, 1.2f, 4.5f),   // camera position
+        g_cameraPos,                   // camera position (kept in sync with global)
         glm::vec3(0.0f, 0.3f, 0.0f),   // look-at point
         glm::vec3(0.0f, 1.0f, 0.0f)    // world up
     );
@@ -282,7 +369,7 @@ int main() {
         100.0f
     );
 
-    // ── Render loop ───────────────────────────────────────────────────────────
+    // -- Render loop --
     glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
 
     while (!glfwWindowShouldClose(window)) {
@@ -300,7 +387,7 @@ int main() {
         glfwSwapBuffers(window);
     }
 
-    // ── Cleanup ───────────────────────────────────────────────────────────────
+    // -- Cleanup --
     glDeleteVertexArrays(1, &g_VAO);
     glDeleteBuffers(1, &g_VBO);
     glDeleteProgram(g_prog);
